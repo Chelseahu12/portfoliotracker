@@ -34,8 +34,8 @@ class AddRequest(BaseModel):
 
 class SellRequest(BaseModel):
     ticker: str
-    sell_price: float  # price you sold at
-    sell_date: str     # YYYY‑MM‑DD (for record‑keeping)
+    shares: float
+    sell_date: str  # YYYY-MM-DD
 
 # ───────────────────────────── Portfolio routes ─────────────────────────────
 @app.post("/add")
@@ -83,26 +83,39 @@ def get_portfolio_pnl():
 def sell_stock(req: SellRequest):
     try:
         ticker = req.ticker.upper()
-        record = portfolio.holdings[portfolio.holdings["ticker"] == ticker].iloc[0]
-        shares = float(record["shares"])
+        record = portfolio.holdings[portfolio.holdings["ticker"] == ticker]
+
+        if record.empty:
+            raise ValueError(f"No holdings found for ticker {ticker}")
+
+        record = record.iloc[0]
+        held_shares = float(record["shares"])
+
+        if req.shares > held_shares:
+            raise ValueError(f"Cannot sell {req.shares} shares; only {held_shares} available")
+
         buy_price = float(record["buy_price"])
         buy_date = str(record["added_on"])
 
-        total_cost = buy_price * shares
-        total_proceeds = req.sell_price * shares
+        total_cost = buy_price * req.shares
+        sell_price = yf.download(ticker, period="1d")["Adj Close"].iloc[0]
+        total_proceeds = sell_price * req.shares
         pnl = total_proceeds - total_cost
-        roi_multiple = req.sell_price / buy_price if buy_price else None
+        roi_multiple = sell_price / buy_price if buy_price else None
 
-        # remove position
-        portfolio.remove(ticker)
+        # Adjust holdings
+        if req.shares == held_shares:
+            portfolio.remove(ticker)
+        else:
+            portfolio.holdings.loc[portfolio.holdings["ticker"] == ticker, "shares"] -= req.shares
 
         log_entry = {
             "ticker": ticker,
-            "shares": shares,
+            "shares": req.shares,
             "buy_date": buy_date,
             "sell_date": req.sell_date,
             "buy_price": buy_price,
-            "sell_price": req.sell_price,
+            "sell_price": sell_price,
             "pnl": pnl,
             "roi_multiple": roi_multiple,
             "logged_at": datetime.now().isoformat(timespec="seconds")
