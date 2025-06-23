@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from streamlit_app import Portfolio
+from portfolio_tracker import Portfolio
 from datetime import datetime
 from pathlib import Path
 import json
@@ -53,7 +53,7 @@ def get_rundown():
 
         # Validate DataFrame before proceeding
         for ticker in portfolio.holdings["ticker"].unique():
-            df = yf.download(ticker, period="1d")
+            df = yf.download(ticker, period="5d", progress=False)
             if df.empty or "Adj Close" not in df.columns:
                 raise ValueError(f"No price data found for {ticker}")
 
@@ -79,6 +79,14 @@ def get_portfolio_pnl():
         raise HTTPException(status_code=400, detail=str(e))
 
 # ───────────────────────────── Sell + history ───────────────────────────────
+def fetch_price(ticker):
+    df = yf.download(ticker, period="5d", progress=False)
+    if df.empty:
+        raise ValueError(f"No price data returned for {ticker}")
+    if "Adj Close" not in df.columns:
+        raise ValueError(f"'Adj Close' column missing for {ticker}")
+    return df["Adj Close"].dropna().iloc[-1]
+
 @app.post("/sell")
 def sell_stock(req: SellRequest):
     try:
@@ -98,7 +106,7 @@ def sell_stock(req: SellRequest):
         buy_date = str(record["added_on"])
 
         total_cost = buy_price * req.shares
-        sell_price = yf.download(ticker, period="1d")["Adj Close"].iloc[0]
+        sell_price = fetch_price(ticker)
         total_proceeds = sell_price * req.shares
         pnl = total_proceeds - total_cost
         roi_multiple = sell_price / buy_price if buy_price else None
