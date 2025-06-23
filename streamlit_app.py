@@ -1,5 +1,6 @@
 import yfinance as yf
 import pandas as pd
+import streamlit as st
 import numpy as np
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -123,7 +124,7 @@ class Portfolio:
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.show()
+        st.pyplot(plt)
 
     @staticmethod
     def _validate_ticker(ticker: str) -> None:
